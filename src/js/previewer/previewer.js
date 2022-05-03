@@ -289,7 +289,7 @@ const methods = {
 		const provider = new BrowserProvider(endpointUrl)
 		const client = new LotusRPC(provider, { schema: mainnet.fullNode })
 
-		this.ocMinerInfo = []
+		this.ocMinerInfo = {}
 		this.ocMinerInfoControlAddresses = ''
 		this.ocMinerInfoOwner = ''
 		this.ocMinerInfoWorker = ''
@@ -299,6 +299,10 @@ const methods = {
 		this.ocMinerInfoSectorSize = 0
 		this.ocMinerInfoWindowPoStPartitionSectors = 0
 		this.ocMinerInfoWindowPoStProofType = 0
+
+		this.ocMinerPower = {}
+		this.ocMinerPowerQualityAdjPower = ''
+		this.ocMinerPowerRawBytePower = ''
 
 		this.$refs.op.toggle(event)
 
@@ -317,8 +321,14 @@ const methods = {
 		this.ocMinerInfoWindowPoStProofType = this.ocMinerInfo.WindowPoStProofType
 		console.log('miner = ', this.ocMinerInfo)
 
-		const minerPower = await client.stateMinerPower(minerId, [])
-		console.log('minerPower = ', minerPower)
+		this.ocMinerPower = await client.stateMinerPower(minerId, [])
+		let ocMinerPowerQualityAdjPower = this.ocMinerPower.MinerPower.QualityAdjPower/(Math.pow(1024, 5))
+		ocMinerPowerQualityAdjPower = Math.round((ocMinerPowerQualityAdjPower + Number.EPSILON) * 10000)/10000
+		this.ocMinerPowerQualityAdjPower = ocMinerPowerQualityAdjPower + ' TB'
+		let ocMinerPowerRawBytePower = this.ocMinerPower.MinerPower.RawBytePower/(Math.pow(1024, 5))
+		ocMinerPowerRawBytePower = Math.round((ocMinerPowerRawBytePower + Number.EPSILON) * 10000)/10000
+		this.ocMinerPowerRawBytePower = ocMinerPowerRawBytePower + ' TB'
+		console.log('minerPower = ', this.ocMinerPower)
 		const stateLookupID = await client.stateLookupID(minerId, [])
 		console.log('stateLookupID = ', stateLookupID)
 		const stateMarketBalance = await client.stateMarketBalance(minerId, [])
@@ -372,7 +382,7 @@ export default {
 			totalRECs: 0,
 			minerRecs: [],
 			expandedCertificateRows: [],
-			ocMinerInfo: [],
+			ocMinerInfo: {},
 			ocMinerInfoControlAddresses: '',
 			ocMinerInfoOwner: '',
 			ocMinerInfoWorker: '',
@@ -381,8 +391,11 @@ export default {
 			ocMinerInfoMultiaddrs: '',
 			ocMinerInfoSectorSize: 0,
 			ocMinerInfoWindowPoStPartitionSectors: 0,
-			ocMinerInfoWindowPoStProofType: 0
-		}
+			ocMinerInfoWindowPoStProofType: 0,
+			ocMinerPower: {},
+			ocMinerPowerQualityAdjPower: '',
+			ocMinerPowerRawBytePower: ''
+			}
 	},
 	created: created,
 	computed: computed,

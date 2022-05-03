@@ -263,6 +263,22 @@
 					{{ ocMinerInfoWindowPoStProofType }}
 				</div>
 			</div>
+			<div class="details-holder">
+				<div class="details-title">
+					Quality Adj. Power:
+				</div>
+				<div class="details-value">
+					{{ ocMinerPowerQualityAdjPower }}
+				</div>
+			</div>
+			<div class="details-holder">
+				<div class="details-title">
+					Raw Byte Power:
+				</div>
+				<div class="details-value">
+					{{ ocMinerPowerRawBytePower }}
+				</div>
+			</div>
 		</OverlayPanel>
 		<ConfirmPopup />
 		<Toast position="top-right" />
