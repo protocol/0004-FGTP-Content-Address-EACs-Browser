@@ -230,12 +230,19 @@ const methods = {
 			rejectIcon: 'pi pi-copy',
 			rejectLabel: 'Copy'
 		})
+
+		// Since @click.stop prevents $confirm popup
+		// positioning correctly this is a workaround
+		this.preventClosingSidebar = true
 	},
 	// Show selected attestation document (and metadata)
 	async showAttestationDocument(certificateDag, manualSelection) {
 		// Close sidebar if selection is done manually
-		if(manualSelection)
+		if(manualSelection && !this.preventClosingSidebar)
 			this.isSidebarVisible = false
+
+		// Reset preventing sidebar closing flag
+		this.preventClosingSidebar = false
 
 		this.pdfFileName = null	// reset viewer
 		this.activeAttestationDocument = null
@@ -370,6 +377,7 @@ export default {
 //			keysDagAddr: '/ipns/dzunic.net',
 			keys: [],
 			isSidebarVisible: true,
+			preventClosingSidebar: false,
 			sidebarLoading: true,
 			certificateDags: [],
 			attestationDocuments: {},

@@ -12,7 +12,7 @@
 				<SkeletonCard
 					v-if="attestationDocuments[certificateDag.dag.dag.attestation_document.toString()] == null || sidebarLoading || attestationDocumentLoading[certificateDag.dag.dag.attestation_document.toString()]" />
 				<div class="certificate-cid"
-					@click.stop="showPopupDialog($event)">
+					@click ="showPopupDialog($event)">
 					{{ '/ipfs/' + certificateDag.dag.dag.attestation_document.toString() }}
 					<input :ref="'ipfs_' + certificateDag.dag.dag.attestation_document.toString()" type="hidden" :value="'/ipfs/' + certificateDag.dag.dag.attestation_document.toString()">
 				</div>
