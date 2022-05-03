@@ -1,0 +1,14 @@
+@import '~@/node_modules/primeflex/primeflex.css';
+
+.common-skeleton-card {
+	  
+	@media (max-width: 1024px) {
+	}
+
+	@media (max-aspect-ratio: 13/9) and (orientation: portrait), (max-width: 800px) {
+	}
+}
+
+.common-skeleton-card-light {
+	@extend .common-skeleton-card !optional;
+}

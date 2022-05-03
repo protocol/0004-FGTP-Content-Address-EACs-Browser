@@ -1,0 +1,17 @@
+.common-pdf-viewer {
+	div {
+		width: 50%;
+		height: 79vh;
+		min-width: 400px;
+	}
+	  
+	@media (max-width: 1024px) {
+	}
+
+	@media (max-aspect-ratio: 13/9) and (orientation: portrait), (max-width: 800px) {
+	}
+}
+
+.common-pdf-viewer-light {
+	@extend .common-pdf-viewer !optional;
+}
