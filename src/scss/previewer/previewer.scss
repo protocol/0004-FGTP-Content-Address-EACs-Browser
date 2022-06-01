@@ -34,6 +34,16 @@
 	}
 }
 
+.groupheader-content-holder {
+	position: relative;
+	display: inline-block;
+	vertical-align: middle;
+	min-width: calc(100% - 2rem);
+	max-width: calc(100% - 2rem);
+	width: calc(100% - 2rem);
+    padding-left: 2rem;
+}
+
 .details-holder {
 	position: relative;
 	display: flex;
@@ -45,13 +55,17 @@
 
 	.details-title {
 		margin-right: .5rem;
-		min-width: 10rem;
+		min-width: 13rem;
 	}
 
 	.details-value {
 		flex-grow: 1;
 		font-weight: 500;
 	}
+}
+
+.strong {
+	font-weight: bold;
 }
 
 .space-left {
@@ -99,7 +113,42 @@
 	margin-left: .5rem;
 }
 
+.allocated-recs {
+	position: relative;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	justify-content: flex-start;
+
+	border-bottom: 1px solid #ccc;
+	font-size: 1.2rem;
+	padding: 1rem;
+
+	width: 100%;
+
+	.allocated-recs-title {
+		margin-right: .5rem;
+		text-align: right;
+	}
+	.allocated-recs-value {
+		text-align: right;
+		font-weight: bold;
+	}
+
+	&.small {
+		font-size: 1rem;
+		border-bottom: none;
+		padding: .2rem 1rem;
+	}
+}
+
 .common-previewer {
+	.p-scrollpanel-content {
+		overflow: unset !important;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
 	.panels {
 		position: relative;
 		display: flex;
@@ -142,8 +191,10 @@
 					justify-content: flex-end;
 
 					border-bottom: 1px solid #ccc;
-					font-size: 2rem;
+					font-size: 1.6rem;
 					padding: 1rem;
+
+					width: 100%;
 
 					.total-recs-title {
 						margin-right: .5rem;
@@ -169,25 +220,23 @@
 		position: fixed;
 		top: .5rem;
 		left: .5rem;
-		width: 3rem;
-		height: 3rem;
+		width: 2.75rem;
+		height: 2.75rem;
 		cursor: pointer;
 		display: flex;
 		align-content: center;
 		justify-content: center;
 		align-items: center;
 		color: #555;
-		border: 4px solid #75bef8;
+		border: 3px solid #75bef8;
 		border-radius: 0.75rem;
-		opacity: .15;
 
 		& > i {
 			font-size: 1.5rem;
 		}
 
 		&:hover {
-			opacity: 1;
-			background-color: #fff;
+			background-color: #ddd;
 		}
 	}
 

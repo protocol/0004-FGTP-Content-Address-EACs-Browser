@@ -2,22 +2,26 @@
 	<section :class="previewerClass">
 		<Sidebar v-model:visible="isSidebarVisible">
 			<SkeletonCard
-				v-if="sidebarLoading && certificateDags.length == 0" />
-			<div v-for="certificateDag in certificateDags"
-				:class="['certificate-thumbs', {'active': (activeAttestationDocument == certificateDag.dag.dag.attestation_document.toString())}]"
-				@click="showAttestationDocument(certificateDag, true)"
-				:key="certificateDag.dag.dag.attestation_document.toString()">
-				<canvas :id="'pdf_canvas_' + certificateDag.dag.dag.attestation_document.toString()"
-					v-if="attestationDocuments[certificateDag.dag.dag.attestation_document.toString()] != null && !sidebarLoading"></canvas>
+				v-if="sidebarLoading && attestationDocuments.length == 0" />
+			<div v-for="attestationDocument in attestationDocuments"
+				:class="['certificate-thumbs', {'active': (activeAttestationDocument == attestationDocument.hash)}]"
+				@click="showAttestationDocument(attestationDocument, true)"
+				:key="attestationDocument.hash">
+				<canvas :id="'pdf_canvas_' + attestationDocument.hash"
+					v-if="!sidebarLoading"></canvas>
 				<SkeletonCard
-					v-if="attestationDocuments[certificateDag.dag.dag.attestation_document.toString()] == null || sidebarLoading || attestationDocumentLoading[certificateDag.dag.dag.attestation_document.toString()]" />
+					v-if="sidebarLoading || attestationDocumentLoading[attestationDocument.hash]" />
 				<div class="certificate-cid"
 					@click ="showPopupDialog($event)">
-					{{ '/ipfs/' + certificateDag.dag.dag.attestation_document.toString() }}
-					<input :ref="'ipfs_' + certificateDag.dag.dag.attestation_document.toString()" type="hidden" :value="'/ipfs/' + certificateDag.dag.dag.attestation_document.toString()">
+					{{ '/ipfs/' + attestationDocument.hash }}
+					<input :ref="'ipfs_' + attestationDocument.hash" type="hidden" :value="'/ipfs/' + attestationDocument.hash">
 				</div>
 			</div>
 		</Sidebar>
+		<ScrollPanel style="width: calc(100% - 3.5rem); height: 50px; margin-left: 3.5rem">
+			<TabMenu :model="deliveriesTabs" :activeIndex="activeDeliveriesTab"
+				@tab-change="deliveriesTabsChanged" />
+		</ScrollPanel>
 		<div class="panels">
 			<div class="pdf-panel">
 				<SkeletonList
@@ -32,10 +36,6 @@
 					v-if="activeAttestationDocument != null">
 					<Panel header="Links" :toggleable="true" :collapsed="false">
 						<div class="flex-inline no-wrap">
-							<div class="shade">Certificates DAG:</div> <div 
-								@click="showInExplorer(activeCertificateDag.dag.cid.toString())" class="no-wrap-ellipsis clickable text-link flex-grow left-space">{{ activeCertificateDag.dag.cid.toString() }}</div>
-						</div>
-						<div class="flex-inline no-wrap">
 							<div class="shade">Attestation document CID:</div> <div 
 								@click="openWithGateway('/ipfs/' + activeAttestationDocument)" class="no-wrap-ellipsis clickable text-link flex-grow left-space">{{ '/ipfs/' + activeAttestationDocument }}</div>
 						</div>
@@ -43,9 +43,18 @@
 				</div>
 				<div class="section"
 					v-if="activeAttestationDocument != null">
-					<DataTable :value="certificatesList" v-model:expandedRows="expandedCertificateRows" dataKey="certificate.cid">
-						<Column :expander="true" headerStyle="width: 3rem" />
-						<Column field="minerId" header="Miner" :sortable="true">
+					<DataTable :value="tableList" rowGroupMode="subheader" groupRowsBy="certificate"
+        				sortMode="single" sortField="certificate" :sortOrder="1"
+						responsiveLayout="scroll" :expandableRowGroups="true" v-model:expandedRowGroups="expandedRowGroups">
+
+						<Column field="certificate" header="Certificate">
+							<template #body="slotProps">
+								<div class="clickable text-link">
+									{{ slotProps.data.certificate }}
+								</div>
+							</template>
+						</Column>
+						<Column field="minerId" header="Miner">
 							<template #body="slotProps">
 								<div class="clickable text-link green"
 									@click="getOnChainData(slotProps.data.minerId, $event)">
@@ -53,138 +62,78 @@
 								</div>
 							</template>
 						</Column>
-						<Column field="certificate.dag.generatorName" header="Generator" :sortable="true">
+						<Column field="reportingStart" header="Reporting start">
 							<template #body="slotProps">
-								<div class="clickable text-link"
-									@click="showInExplorer(slotProps.data.certificate.cid)">
-									{{ slotProps.data.certificate.dag.generatorName }}
+								<div class="">
+									{{ moment(slotProps.data.reportingStart).format("YYYY-MM-DD") }}
 								</div>
 							</template>
 						</Column>
-						<Column field="certificate.dag.energySource" header="Source" :sortable="true"></Column>
-						<Column field="certificate.dag.energyWh" header="RECs" :sortable="true">
+						<Column field="reportingEnd" header="Reporting end">
 							<template #body="slotProps">
-								<div class="clickable text-link"
-									@click="showInExplorer(slotProps.data.certificate.cid)">
-									{{ slotProps.data.certificate.dag.energyWh/1000000 }}
+								<div class="">
+									{{ moment(slotProps.data.reportingEnd).format("YYYY-MM-DD") }}
 								</div>
 							</template>
 						</Column>
-						<template #expansion="slotProps">
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Label:
+						<Column field="minerAllocationVolumeMWh" header="RECs">
+							<template #body="slotProps">
+								<div class="">
+									{{ slotProps.data.minerAllocationVolumeMWh }}
 								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.label }}
+							</template>
+						</Column>
+						<template #groupheader="slotProps">
+							<div class="groupheader-content-holder">
+								<div class="details-holder">
+									<div class="details-title">
+										Certificate
+									</div>
+									<div class="details-value">
+										<span class="strong">{{ slotProps.data.certificate }},</span>
+										<span>{{ slotProps.data.country }}</span><span v-if="slotProps.data.region">, {{ slotProps.data.region }}</span>
+									</div>
 								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Country:
+								<div class="details-holder">
+									<div class="details-title">
+										Generation
+									</div>
+									<div class="details-value">
+										<span class="strong">{{ moment(slotProps.data.generationStart).format("YYYY-MM-DD") }}</span> /
+										<span class="strong">{{ moment(slotProps.data.generationEnd).format("YYYY-MM-DD") }}</span>
+										<span v-if="slotProps.data.generatorName" class="strong">, {{ slotProps.data.generatorName }}</span>
+									</div>
 								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.country }}
+								<div class="details-holder">
+									<div class="details-title">
+										Source / RECs
+									</div>
+									<div class="details-value">
+										<span class="strong">{{ slotProps.data.energySource }}</span> /
+										<span class="strong">{{ slotProps.data.certificateVolumeWh / 1000000 }} MWh</span>
+									</div>
 								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Region:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.region }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Generator:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.generatorName }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Capacity:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.nameplateCapacityW/1000000 }} MW
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Energy source:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.energySource }}
+								<div class="details-holder">
+									<div class="details-title">
+										Product type / Label
+									</div>
+									<div class="details-value">
+										<span class="strong">{{ slotProps.data.productType }}</span>
+										<span v-if="slotProps.data.label" class="strong">/ {{ slotProps.data.label }}</span>
+									</div>
 								</div>
 							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Energy / RECs:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.energyWh/1000000 }} MW
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Product:
-								</div>
-								<div class="details-value">
-									{{ slotProps.data.certificate.dag.productType }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Generation start:
-								</div>
-								<div class="details-value">
-									{{ moment(slotProps.data.certificate.dag.generationStart).format('MMM Do YYYY') }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Generation end:
-								</div>
-								<div class="details-value">
-									{{ moment(slotProps.data.certificate.dag.generationEnd).format('MMM Do YYYY') }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Reporting start:
-								</div>
-								<div class="details-value">
-									{{ moment(slotProps.data.certificate.dag.reportingStart).format('MMM Do YYYY') }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Reporting end:
-								</div>
-								<div class="details-value">
-									{{ moment(slotProps.data.certificate.dag.reportingEnd).format('MMM Do YYYY') }}
-								</div>
-							</div>
-							<div class="details-holder space-left">
-								<div class="details-title">
-									Redemption date:
-								</div>
-								<div class="details-value">
-									{{ moment(slotProps.data.certificate.dag.redemptionDate).format('MMM Do YYYY') }}
-								</div>
+						</template>
+						<template #groupfooter="slotProps">
+							<div class="allocated-recs">
+								<div class="allocated-recs-title">RECs allocated by this certificate:</div>
+								<div class="allocated-recs-value">{{ allocatedRecs[slotProps.data.certificate] }} MWh</div>
 							</div>
 						</template>
 					</DataTable>
 					<div class="total-recs">
-						<div class="total-recs-title">Total RECs:</div>
-						<div class="total-recs-value">{{ totalRECs }}</div>
-					</div>
-					<div class="total-recs small"
-						v-for="rec in minerRecs" :key="rec.minerId">
-						<div class="total-recs-title">{{ rec.minerId }}:</div>
-						<div class="total-recs-value">{{ rec.RECs }}</div>
+						<div class="total-recs-title">Totally allocated RECs:</div>
+						<div class="total-recs-value">{{ totalRECs }} MWh</div>
 					</div>
 				</div>
 			</div>

@@ -23,6 +23,8 @@ import Panel from 'primevue/panel'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import OverlayPanel from 'primevue/overlaypanel'
+import TabMenu from 'primevue/tabmenu'
+import ScrollPanel from 'primevue/scrollpanel'
 
 const created = function() {
 	const that = this
@@ -48,17 +50,30 @@ const computed = {
 
 const watch = {
 	isSidebarVisible: async function(state, before) {
-		if(state == true) {
-			// Retrieve keys from IPFS
-			this.sidebarLoading = true
-			this.keys = await this.getDagFromIPNS(this.keysDagAddr)
+		if(!state)
+			return
+		// Load PDF thumbnails for side bar
+		await this.loadPdfThumbs()
 
-			this.certificateDags = await this.groupCertificatesByAttestationDocuments()
-			this.sidebarLoading = false
-
-			// Load PDF thumbnails for side bar
-			this.loadPdfThumbs()
-		}
+		// Add scrolling event to sidebar
+		this.addEventToClassName("p-sidebar-content", "scroll")
+	},
+	activeDeliveriesTab: async function(state, before) {
+		if(state == null)
+			return
+		this.attestationDocuments.length = 0
+		this.extractedCertificates.length = 0
+		this.loadingCerticicatesStart = 0
+		this.loadingCerticicatesEnd = 0
+		this.loadingHigher = true
+		this.sidebarLoading = true
+		this.isSidebarVisible = true
+		this.certificates = (await this.getDag(this.deliveries[this.deliveriesTabs[state].label].deliveries_cid)).dag.certificates
+		this.allocations = (await this.getDag(this.transactions[this.deliveriesTabs[state].label].allocations_cid)).dag
+	},
+	certificates: async function(state, before) {
+		await this.matchAttestationNameToCertificates()
+		await this.createLoadingBatch()
 	}
 }
 
@@ -67,21 +82,43 @@ const mounted = async function() {
 	//	this.ipfs = await create('https://filecoin-green-eac-browser.dzunic.net:5002')
 	this.ipfs = await create('/dns4/filecoin-green-eac-browser.dzunic.net/tcp/5002/https')
 
-	// Retrieve keys from IPFS
-	this.sidebarLoading = true
-	this.keys = await this.getDagFromIPNS(this.keysDagAddr)
+	// Add scrolling event to sidebar
+	this.addEventToClassName("p-sidebar-content", "scroll")
 
-	this.certificateDags = await this.groupCertificatesByAttestationDocuments()
-	this.sidebarLoading = false
-
-	// Select first attestation document from the list
-	this.showAttestationDocument(this.certificateDags[0])
-
-	// Load PDF thumbnails for side bar
-	this.loadPdfThumbs()
+	// Retrieve transactions and deliveries from IPFS
+	const td = await this.getTransactionsAndDeliveries()
+	this.transactions = td.transactions
+	this.deliveries = td.deliveries
+	this.deliveriesTabs = this.getDeliveriesTabs()
+	if(this.activeDeliveriesTab == null)
+		this.activeDeliveriesTab = 0
 }
 
 const methods = {
+	// Handle element scrolling events
+	elementScrolling(event) {
+		if(this.sidebarLoading)
+			return
+		const element = event.target
+		const reachedBottom = Math.ceil(element.scrollHeight - element.scrollTop) === element.clientHeight
+		const reachedTop = element.scrollTop === 0
+		if(reachedBottom) {
+			this.loadingHigher = true
+			this.createLoadingBatch()
+		}
+		else if(reachedTop) {
+			this.loadingHigher = false
+			this.createLoadingBatch()
+		}
+	},
+	// Add event to DOM elements with same className
+	addEventToClassName(className, event) {
+		var elements = document.getElementsByClassName(className);
+		
+		for (var i = 0; i < elements.length; i++) {
+			elements[i].addEventListener(event, this.elementScrolling, false);
+		}
+	},
 	// Resolve IPNS name
 	async resolveIpnsId(id) {
 		let hash
@@ -111,54 +148,136 @@ const methods = {
 			dag: dag.value
 		}
 	},
-	// Filter and group certificates by attestation documents
-	async groupCertificatesByAttestationDocuments() {
-		const certificateNames = this.keys.dag.certificates
-
-		// Make sure name list is distinct
-		const distinctCertificateNames = certificateNames
-			.filter((el, ind, ar) => {return ar.map((arel) => {return arel.id}).indexOf(el.id) === ind})
-
-		// Retrieve certificate DAGs from IPFS
-		let certificateDags = []
-		for (const name of distinctCertificateNames) {
-			certificateDags.push({
-				ns: name.id,
-				dag: await this.getDagFromIPNS(name.id)
-			})
+	// Get transactions and deliveries objects from IPNS/IPFS
+	async getTransactionsAndDeliveries() {
+		return {
+			"transactions": (await this.getDag((await this.getDagFromIPNS(this.transactionsKey)).dag.transactions_cid)).dag,
+			"deliveries": (await this.getDag((await this.getDagFromIPNS(this.deliveriesKey)).dag.deliveries_cid)).dag
 		}
+	},
+	getDeliveriesTabs() {
+		return Object.keys(this.deliveries).map((d) => {return {
+			"label": d,
+			"icon": null
+		}})
+	},
+	deliveriesTabsChanged(tabs) {
+		this.activeDeliveriesTab = tabs.index
+	},
+	async matchAttestationNameToCertificates() {
+		this.certificatesWithAttestationName = this.certificates.map(async (c) => {
+			let attestationDocumentName = c.id.substring(0, c.id.indexOf("_certificate_"))
+			return {
+				"id": c.id,
+				"cid": c.cid,
+				"certificate": await this.getDag(c.cid),
+				"attestation": attestationDocumentName
+			}
+		})
+		this.certificatesWithAttestationName = await all(this.certificatesWithAttestationName)
+	},
+	async createLoadingBatch() {
+		let crt = {}
+		let hashes = {}
+		const totalCerts = this.certificates.length
 
-		return certificateDags
+		// Calculate batch index basing on direction
+		if(this.loadingHigher) {	// higher indexes
+			if(this.loadingCerticicatesEnd >= totalCerts - 1)
+				return
+
+			this.sidebarLoading = true
+			this.attestationDocuments.length = 0
+			this.loadingCerticicatesStart = (this.loadingCerticicatesEnd == 0) ? 0 : this.loadingCerticicatesEnd + 1
+			let index = this.loadingCerticicatesStart
+
+			while (this.attestationDocuments.length < this.loadingBatch && index < totalCerts) {
+				const certificate = this.certificates[index]
+				let cert = await this.getDag(certificate.cid)
+				crt = cert.dag
+				crt.id = certificate.id
+
+				const cid = crt.attestationDocumentCid
+				const hash = cid.toString()
+	
+				// Check if we already have document loaded
+				let content = []
+				if(hashes[hash] == null) {
+					hashes[hash] = hash
+					for await (const buf of this.ipfs.get(cid)) {
+						content.push(buf)
+					}
+					this.attestationDocuments.push({
+						"hash": hash,
+						"content": content,
+						"attestation": crt.attestation_file
+					})
+				}
+				index++
+			}
+			this.loadingCerticicatesEnd = index - 1
+		}
+		else {				// lower indexes
+			if(this.loadingCerticicatesStart <= 0)
+				return
+
+			this.sidebarLoading = true
+			this.attestationDocuments.length = 0
+			this.loadingCerticicatesEnd = (this.loadingCerticicatesStart == 0) ? 0 : this.loadingCerticicatesStart - 1
+			let index = this.loadingCerticicatesEnd
+
+			while (this.attestationDocuments.length < this.loadingBatch && index >= 0) {
+				const certificate = this.certificates[index]
+				let cert = await this.getDag(certificate.cid)
+				crt = cert.dag
+				crt.id = certificate.id
+
+				const cid = crt.attestationDocumentCid
+				const hash = cid.toString()
+
+				// Check if we already have document loaded
+				let content = []
+				if(hashes[hash] == null) {
+					hashes[hash] = hash
+					for await (const buf of this.ipfs.get(cid)) {
+						content.push(buf)
+					}
+					this.attestationDocuments.push({
+						"hash": hash,
+						"content": content,
+						"attestation": crt.attestation_file
+					})
+				}
+				index--
+			}
+			this.attestationDocuments.reverse()
+			this.loadingCerticicatesStart = index + 1
+		}
+		this.sidebarLoading = false
+
+		// Load PDF thumbnails for side bar
+		await this.loadPdfThumbs()
+
+		// Select first attestation document from the batch
+		this.showAttestationDocument(this.attestationDocuments[0])
 	},
 	// Load PDF thumbs
 	async loadPdfThumbs() {
 		const that = this
 		// TODO, make this lazzy load with sidebar scrolling
-		for await (const certificateDag of this.certificateDags) {
-			const pdfDag = certificateDag.dag.dag.attestation_document
-			this.attestationDocumentLoading[pdfDag.toString()] = true
-
-			// Check if we already have PDFs loaded
-			let pdfContent = []
-			if(this.attestationDocuments[pdfDag.toString()] == null) {
-				for await (const buf of this.ipfs.get(pdfDag)) {
-					pdfContent.push(buf)
-				}
-				this.attestationDocuments[pdfDag.toString()] = pdfContent
-			}
-			else {
-				pdfContent = this.attestationDocuments[pdfDag.toString()]
-			}
-
+		for (const attestationDocument of this.attestationDocuments) {
+			const hash = attestationDocument.hash
+			const content = attestationDocument.content
+			this.attestationDocumentLoading[hash] = true
 			// Load doc and create thumbs
-			const pdfIpfs = '/ipfs/' + pdfDag.toString()
-			const loadingTask = pdfjsLib.getDocument(uint8ArrayConcat(pdfContent))
+			const pdfIpfs = '/ipfs/' + hash
+			const loadingTask = pdfjsLib.getDocument(uint8ArrayConcat(attestationDocument.content))
 			loadingTask.promise.then((doc) => {
 				// Request a first page
 				return doc.getPage(1).then((page) => {
 					// Display page on the existing canvas with 100% scale.
 					const viewport = page.getViewport({ scale: 0.35 })
-					const canvas = document.getElementById('pdf_canvas_' + pdfDag.toString())
+					const canvas = document.getElementById('pdf_canvas_' + hash)
 					try {
 						//		canvas.width = viewport.width
 						//		canvas.height = viewport.height
@@ -169,11 +288,11 @@ const methods = {
 							canvasContext: ctx,
 							viewport
 						})
-						that.attestationDocumentLoading[pdfDag.toString()] = false
+						that.attestationDocumentLoading[hash] = false
 						return renderTask.promise
 					}
 					catch (error) {
-						that.attestationDocumentLoading[pdfDag.toString()] = false
+						that.attestationDocumentLoading[hash] = false
 						return null
 					}
 				})
@@ -236,7 +355,8 @@ const methods = {
 		this.preventClosingSidebar = true
 	},
 	// Show selected attestation document (and metadata)
-	async showAttestationDocument(certificateDag, manualSelection) {
+	async showAttestationDocument(attestationDocument, manualSelection) {
+		const that = this
 		// Close sidebar if selection is done manually
 		if(manualSelection && !this.preventClosingSidebar)
 			this.isSidebarVisible = false
@@ -246,41 +366,69 @@ const methods = {
 
 		this.pdfFileName = null	// reset viewer
 		this.activeAttestationDocument = null
-		this.activeCertificateDag = null
 
-		const hash = certificateDag.dag.dag.attestation_document.toString()
-		this.pdfFileName = this.ipfsGateway + '/ipfs/' + hash
-		this.activeAttestationDocument = hash
-		this.activeCertificateDag = certificateDag
+		const attestationName = attestationDocument.attestation.replace(".pdf", "")
 
-		// List certificates
-		const certificatesList = this.activeCertificateDag.dag.dag.certificates
-			.map(async (cert) => {return {
-				'minerId': cert.miner,
-				'certificate': await this.getDag(cert.certificate)
-			}})
-		this.certificatesList = await all(certificatesList)
+		const attestationCertificates = this.certificatesWithAttestationName.filter((c) => {
+			return c.attestation == attestationName
+		})
+		this.attestationCertificates = {}
+		for (const ac of attestationCertificates) {
+			let supplies = []
+			if(this.attestationCertificates[ac.attestation] == null)
+				this.attestationCertificates[ac.attestation] = []
 
-		// Calculate total RECs
-		this.totalRECs = this.certificatesList
-			.map((cert) => {return cert.certificate.dag.energyWh})
-			.reduce((a, b) => a + b, 0) / 1000000
+			if(ac.certificate.dag.supplies != null)
+				for (const supply of ac.certificate.dag.supplies) {
+					supplies.push((await this.getDag(supply)).dag)
+				}
 
-		// Calculate subset REC sums (per miner Id)
-		const miners = this.certificatesList
-			.filter((el, ind, ar) => {return ar.map((arel) => {return arel.minerId}).indexOf(el.minerId) === ind})
-			.map((el) => {return el.minerId})
-		this.minerRecs = []
-		for (const miner of miners) {
-			const recs = this.certificatesList
-				.filter((cert) => {return cert.minerId == miner})
-				.map((cert) => {return cert.certificate.dag.energyWh})
-				.reduce((a, b) => a + b, 0) / 1000000
-			this.minerRecs.push({
-				minerId: miner,
-				RECs: recs
+			this.attestationCertificates[ac.attestation].push({
+				"id": ac.id,
+				"certificate": ac.certificate.dag,
+				"supplies": supplies
 			})
 		}
+
+		this.certificatesList = this.attestationCertificates[attestationName]
+
+		const hash = attestationDocument.hash
+		this.pdfFileName = this.ipfsGateway + '/ipfs/' + hash
+		this.activeAttestationDocument = hash
+
+		// List certificates
+		this.tableList.length = 0
+		this.allocatedRecs = {}
+		for (const c of this.certificatesList) {
+			this.allocatedRecs[c.certificate.certificate] = 0
+			for (const s of c.supplies) {
+				this.tableList.push({
+					"certificate": c.certificate.certificate,
+					"country": c.certificate.country,
+					"region": c.certificate.region,
+					"generatorName": c.certificate.generatorName,
+					"energySource": c.certificate.energySource,
+					"label": c.certificate.label,
+					"productType": c.certificate.productType,
+					"generationStart": c.certificate.generationStart,
+					"generationEnd": c.certificate.generationEnd,
+					"reportingStart": c.certificate.reportingStart,
+					"reportingEnd": c.certificate.reportingEnd,
+					"sellerName": c.certificate.sellerName,
+					"sellerAddress": c.certificate.sellerAddress,
+					"certificateVolumeWh": c.certificate.volume_Wh,
+					"minerId":  that.allocations[s.allocation].minerID,
+					"defaulted":  that.allocations[s.allocation].defaulted,
+					"minerAllocationVolumeMWh": s.volume_MWh
+				})
+				this.allocatedRecs[c.certificate.certificate] += s.volume_MWh
+			}
+		}
+
+		// Calculate total RECs
+		this.totalRECs = this.tableList
+			.map((s) => {return s.minerAllocationVolumeMWh})
+			.reduce((a, b) => a + b, 0)
 	},
 	// Show DAG in IPLD explorer
 	showInExplorer(hash) {
@@ -362,7 +510,9 @@ export default {
 		Panel,
 		DataTable,
 		Column,
-		OverlayPanel
+		OverlayPanel,
+		TabMenu,
+		ScrollPanel
 	},
 	directives: {
 	},
@@ -373,14 +523,29 @@ export default {
 			ipfs: null,
 			ipfsGateway: 'https://ipfs.io',
 			dagExplorer: 'https://explore.ipld.io/#/explore/',
-			keysDagAddr: 'k51qzi5uqu5dkqlp786o57kxpfs97nvxu41ha15kdnocgy1zilrx4rvonscbo6',
+//			keysDagAddr: 'k51qzi5uqu5dkqlp786o57kxpfs97nvxu41ha15kdnocgy1zilrx4rvonscbo6',
+			transactionsKey: 'k51qzi5uqu5dlf3u2vtyxnqgr2hozq5g6ad9hb8gy25yr593cy3vw6zcko0xgk',
+			deliveriesKey: 'k51qzi5uqu5dmj5nhnozluv80g7h8hhrer9fc2urn5yllciewhapqbbevn8w5p',
+			transactions: {},
+			deliveries: {},
+			deliveriesTabs: [],
+			activeDeliveriesTab: null,
+			certificates: [],
+			extractedCertificates: [],
+			loadingBatch: 10,
+			loadingCerticicatesStart: 0,
+			loadingCerticicatesEnd: 0,
+			loadingHigher: true,
+			attestationCertificates: {},
+			certificatesWithAttestationName: [],
+			tableList: [],
+			allocatedRecs: {},
 //			keysDagAddr: '/ipns/dzunic.net',
 			keys: [],
 			isSidebarVisible: true,
 			preventClosingSidebar: false,
 			sidebarLoading: true,
-			certificateDags: [],
-			attestationDocuments: {},
+			attestationDocuments: [],
 			pdfViewerPath: 'libs/pdfjs-2.13.216-dist/web/viewer.html',
 			pdfFileName: null,
 			activeAttestationDocument: null,
@@ -402,8 +567,9 @@ export default {
 			ocMinerInfoWindowPoStProofType: 0,
 			ocMinerPower: {},
 			ocMinerPowerQualityAdjPower: '',
-			ocMinerPowerRawBytePower: ''
-			}
+			ocMinerPowerRawBytePower: '',
+			expandedRowGroups: null
+		}
 	},
 	created: created,
 	computed: computed,
