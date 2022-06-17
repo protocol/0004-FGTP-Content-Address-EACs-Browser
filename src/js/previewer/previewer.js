@@ -69,7 +69,7 @@ const watch = {
 		this.sidebarLoading = true
 		this.isSidebarVisible = true
 		this.certificates = (await this.getDag(this.deliveries[this.deliveriesTabs[state].label].deliveries_cid)).dag.certificates
-		this.allocations = (await this.getDag(this.transactions[this.deliveriesTabs[state].label].allocations_cid)).dag
+		this.allocations = (await this.getDag(this.transactions[this.deliveriesTabs[state].label].order_cid)).dag.allocations
 	},
 	certificates: async function(state, before) {
 		await this.matchAttestationNameToCertificates()
@@ -79,8 +79,8 @@ const watch = {
 
 const mounted = async function() {
 	// Init ipfs client
-	//	this.ipfs = await create('https://filecoin-green-eac-browser.dzunic.net:5002')
-	this.ipfs = await create('/dns4/filecoin-green-eac-browser.dzunic.net/tcp/5002/https')
+	//	this.ipfs = await create('/dns4/filecoin-green-eac-browser.dzunic.net/tcp/5002/https')
+	this.ipfs = await create('/dns4/green.filecoin.space/tcp/5002/https')
 
 	// Add scrolling event to sidebar
 	this.addEventToClassName("p-sidebar-content", "scroll")
@@ -417,8 +417,8 @@ const methods = {
 					"sellerName": c.certificate.sellerName,
 					"sellerAddress": c.certificate.sellerAddress,
 					"certificateVolumeWh": c.certificate.volume_Wh,
-					"minerId":  that.allocations[s.allocation].minerID,
-					"defaulted":  that.allocations[s.allocation].defaulted,
+					"minerId":  this.allocations[s.allocation].minerID,
+					"defaulted":  this.allocations[s.allocation].defaulted,
 					"minerAllocationVolumeMWh": s.volume_MWh
 				})
 				this.allocatedRecs[c.certificate.certificate] += s.volume_MWh
@@ -521,17 +521,22 @@ export default {
 		return {
 			moment: moment,
 			ipfs: null,
-			ipfsGateway: 'https://ipfs.io',
+//			ipfsGateway: 'https://filecoin-green-eac-browser.dzunic.net',
+			ipfsGateway: 'https://green.filecoin.space',
 			dagExplorer: 'https://explore.ipld.io/#/explore/',
-//			keysDagAddr: 'k51qzi5uqu5dkqlp786o57kxpfs97nvxu41ha15kdnocgy1zilrx4rvonscbo6',
-			transactionsKey: 'k51qzi5uqu5dlf3u2vtyxnqgr2hozq5g6ad9hb8gy25yr593cy3vw6zcko0xgk',
-			deliveriesKey: 'k51qzi5uqu5dmj5nhnozluv80g7h8hhrer9fc2urn5yllciewhapqbbevn8w5p',
+//			transactionsKey: 'k51qzi5uqu5dlf3u2vtyxnqgr2hozq5g6ad9hb8gy25yr593cy3vw6zcko0xgk',
+			transactionsKey: 'k51qzi5uqu5dlwhffqq4a8ksdtr14d3vckvhldpuxd68r84g3eqsjqgqdvxazc',
+//			deliveriesKey: 'k51qzi5uqu5dmj5nhnozluv80g7h8hhrer9fc2urn5yllciewhapqbbevn8w5p',
+			deliveriesKey: 'k51qzi5uqu5dkllf259064y4qyr6ra1zk7u8qgigsoahwo04m0efnf88827ume',
 			transactions: {},
 			deliveries: {},
 			deliveriesTabs: [],
 			activeDeliveriesTab: null,
 			certificates: [],
 			extractedCertificates: [],
+			order: {},
+			contracts: [],
+			allocations: {},
 			loadingBatch: 10,
 			loadingCerticicatesStart: 0,
 			loadingCerticicatesEnd: 0,
@@ -540,7 +545,6 @@ export default {
 			certificatesWithAttestationName: [],
 			tableList: [],
 			allocatedRecs: {},
-//			keysDagAddr: '/ipns/dzunic.net',
 			keys: [],
 			isSidebarVisible: true,
 			preventClosingSidebar: false,
